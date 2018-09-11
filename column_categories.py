@@ -235,3 +235,15 @@ duplicates = {
     'SQBage':'age squared',
 }
 
+squared = {
+    'SQBescolari':'years of schooling (escolari) squared',
+    'SQBage':'age squared',
+    'SQBhogar_total':'hogar_total squared',
+    'SQBedjefe':'years of education of male head of household (edjefe) squared',
+    'SQBhogar_nin':'hogar_nin squared',
+    'SQBovercrowding':'overcrowding squared',
+    'SQBdependency':'dependency squared',
+    'SQBmeaned':'square of the mean years of education of adults (>=18) in the household',
+    'agesq':'Age squared'
+}
+
