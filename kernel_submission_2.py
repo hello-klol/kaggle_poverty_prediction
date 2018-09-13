@@ -1,76 +1,22 @@
 import pandas as pd
 import numpy as np
+import scipy.stats
 
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.feature_selection import SelectKBest
-from sklearn.feature_selection import chi2
-
-target_values = {
-    1: 'extreme poverty',
-    2: 'moderate poverty',
-    3: 'vulnerable households',
-    4: 'non vulnerable households'
-}
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import Imputer
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.pipeline import Pipeline
 
 household_id = 'idhogar'
 head_of_household = 'parentesco1'
 person_id = 'Id'
 target_column = 'Target'
 
-# Info about this specific individual rather than household-level
-individuals_info = {
-    'parentesco1': 'indicates if this person is the head of the household.',
-    'v18q':'owns a tablet',
-    'escolari':'years of schooling',
-    'rez_esc':'Years behind in school',
-    'dis':'=1 if disable person',
-    'male':'=1 if male',
-    'female':'=1 if female',
-    'estadocivil1':'=1 if less than 10 years old',
-    'estadocivil2':'=1 if free or coupled uunion',
-    'estadocivil3':'=1 if married',
-    'estadocivil4':'=1 if divorced',
-    'estadocivil5':'=1 if separated',
-    'estadocivil6':'=1 if widow/er',
-    'estadocivil7':'=1 if single',
-    'parentesco1':'=1 if household head',
-    'parentesco2':'=1 if spouse/partner',
-    'parentesco3':'=1 if son/doughter',
-    'parentesco4':'=1 if stepson/doughter',
-    'parentesco5':'=1 if son/doughter in law',
-    'parentesco6':'=1 if grandson/doughter',
-    'parentesco7':'=1 if mother/father',
-    'parentesco8':'=1 if father/mother in law',
-    'parentesco9':'=1 if brother/sister',
-    'parentesco10':'=1 if brother/sister in law',
-    'parentesco11':'=1 if other family member',
-    'parentesco12':'=1 if other non family member',
-    'instlevel1':'=1 no level of education',
-    'instlevel2':'=1 incomplete primary',
-    'instlevel3':'=1 complete primary',
-    'instlevel4':'=1 incomplete academic secondary level',
-    'instlevel5':'=1 complete academic secondary level',
-    'instlevel6':'=1 incomplete technical secondary level',
-    'instlevel7':'=1 complete technical secondary level',
-    'instlevel8':'=1 undergraduate and higher education',
-    'instlevel9':'=1 postgraduate higher education',
-    'mobilephone':'=1 if mobile phone',
-    'age':'Age in years',
-    'SQBescolari':'years of schooling squared',
-    'SQBage':'age squared',
-    'agesq':'Age squared'
-}
-
-squared = {
-    'SQBescolari':'years of schooling (escolari) squared',
-    'SQBage':'age squared',
-    'SQBhogar_total':'hogar_total squared',
-    'SQBedjefe':'years of education of male head of household (edjefe) squared',
-    'SQBhogar_nin':'hogar_nin squared',
-    'SQBovercrowding':'overcrowding squared',
-    'SQBdependency':'dependency squared',
-    'SQBmeaned':'square of the mean years of education of adults (>=18) in the household',
-    'agesq':'Age squared'
+target_values = {
+    1: 'extreme poverty',
+    2: 'moderate poverty',
+    3: 'vulnerable households',
+    4: 'non vulnerable households'
 }
 
 hh_columns = [person_id, 'v2a1', 'hacdor', 'rooms', 'hacapo', 'v14a', 'refrig', 'v18q1', 'r4h1',
@@ -111,28 +57,11 @@ def correct_inconsistent_targets(df):
     df = updated.rename(index=str, columns={'Target_x': target_column}).drop('Target_y', axis=1)
     get_inconsistent_rows(df, target_column)
     return df
-    
+
 def get_training_data(filepath='../input/train.csv', idx='Id'):
     train = load_from_file(filepath, idx)
     train = correct_inconsistent_targets(train)
     return train
-
-def get_test_data(filepath='../input/test.csv', idx='Id'):
-    return load_from_file(filepath, idx)
-
-def target_by_household(df):
-    return df.reset_index()[[household_id, target_column]].groupby(household_id).first()
-
-def target_table_breakdown(df, target_desc=target_values):
-    household_target_sizes = df[target_column].value_counts().to_frame()
-    household_target_sizes.columns = ['total']
-    household_target_sizes['proportion'] = household_target_sizes['total']/household_target_sizes['total'].sum()
-    household_target_sizes['target description'] = household_target_sizes.index.map(target_desc.get)
-    return household_target_sizes
-
-def get_column_dtypes(df):
-    columns_by_dtype = df.columns.groupby(df.dtypes)
-    return {k.name: v for k, v in columns_by_dtype.items()}
 
 def convert_to_binary(df, feature):
     df[feature].replace('no','0',inplace=True)
@@ -152,10 +81,6 @@ def clean_non_numeric_features(df):
     df = convert_to_binary(df, 'edjefa')
     return df
 
-def get_missing_features(df):
-    nulls = df.isnull().sum(axis=0)
-    return nulls[nulls!=0]/len(df)
-
 def fill_v18q1_na(df):
     # Nan for v18q1 means family doesn't own a tablet
     df['v18q1'] = df['v18q1'].fillna(0).astype(int)
@@ -166,7 +91,7 @@ def fix_missing_rent(df):
     df.loc[(df['tipovivi1'] == 1), 'v2a1'] = 0
     # Mark missing rent
     df['missing_rent'] = df['v2a1'].isnull().astype(int)
-    df['v2a1'] = df['v2a1'].fillna(0).astype(int)
+    df['v2a1'] = df['v2a1'].fillna(0).astype(float)
     return df
 
 def fill_missing_school(df):
@@ -187,6 +112,14 @@ def clean_missing_values(df):
     df = fill_missing_school(df)
     fill_in_missing_educ(df)
     return df
+
+def clean_data(data):
+    data = clean_non_numeric_features(data)
+    data = clean_missing_values(data)
+    return data
+
+def target_by_household(df):
+    return df.reset_index()[[household_id, target_column]].groupby(household_id).first()
 
 def compress_electricity(df):
     electric = []
@@ -243,9 +176,7 @@ def warning_level(df):
     return df
 
 def possessions_rating(df):
-    df['possessions'] = (df['refrig'] + 
-                        df['computer'] + 
-                        df['television'])
+    df['possessions'] = (df['refrig'] + df['computer'] + df['television'])
     return df
     
 def add_custom_features(df):
@@ -254,90 +185,83 @@ def add_custom_features(df):
     df = possessions_rating(df)
     return df
 
-def clean_data(data):
-    data = clean_non_numeric_features(data)
-    data = clean_missing_values(data)
-    return data
-
-def get_balanced_data(df, n=None, random_state=1):
-    if n is None:
-        n = target_table_breakdown(df)['total'].min()
-    return df.sample(frac=1, random_state=random_state).groupby(target_column).head(n)
+def load_train_data(filepath='../input/train.csv'):
+    train_df = get_training_data(filepath)
+    train_df = clean_data(train_df)
+    train_df = train_df.reset_index()[hh_columns+[household_id, target_column]]
+    target_household_map = target_by_household(train_df)
+    train_df = train_df.drop(target_column, axis=1).groupby(household_id).agg(lambda x: scipy.stats.mode(x)[0])
+    train_df = train_df.join(target_household_map)
+    train_df = compress_column_data(train_df)
+    train_df = add_custom_features(train_df)
+    return train_df
 
 def convert_to_binary_targets(df, true_target):
     df = df.copy()
     df[target_column] = np.where(df[target_column]==true_target, 1, 0)
     return df
 
-def feature_selector(selector,data, target):
-    selector.fit(data, target)
-    features = selector.get_support(indices = True)  # Returns array of indexes of nonremoved features
-    k_features = [data.columns.values[i] for i in features]
-    return k_features
+def target_table_breakdown(df, target_desc=target_values):
+    household_target_sizes = df[target_column].value_counts().to_frame()
+    household_target_sizes.columns = ['total']
+    household_target_sizes['proportion'] = household_target_sizes['total']/household_target_sizes['total'].sum()
+    household_target_sizes['target description'] = household_target_sizes.index.map(target_desc.get)
+    return household_target_sizes
 
-def run_train(clf, train_data, target_value):
-    is_n = train_data.loc[train_data[target_column]<=target_value]
-    is_n = convert_to_binary_targets(is_n, target_value)
-    
-    sel = SelectKBest(chi2, k=20)
-    k_features = feature_selector(sel, is_n.drop(target_column, axis=1), is_n[target_column])
-    is_n = is_n[k_features+[target_column]]
-    
-    sample_max = target_table_breakdown(is_n)['total'].max()
-    is_n = get_balanced_data(is_n, sample_max, random_state=10)
-    clf.fit(is_n.drop(target_column, axis=1), is_n[target_column])
-    return clf, k_features
-    
-def train_all_clf(df, clfs):
-    clf_4, k_features_4 = run_train(clfs.get(4), df, 4)
-    clf_3, k_features_3 = run_train(clfs.get(3), df, 3)
-    clf_2, k_features_2 = run_train(clfs.get(2), df, 2)
-    return [(clf_2, k_features_2), (clf_3, k_features_3), (clf_4, k_features_4)]
+def get_balanced_data(df, n=None, random_state=1):
+    if n is None:
+        n = target_table_breakdown(df)['total'].min()
+    return df.sample(frac=1, random_state=random_state).groupby(target_column).head(n)
 
-def run_preds(clf, k_features, df):    
-    preds = clf.predict(df[k_features])
-    return list(zip(df.index, preds))
+def train_clf(df):
+    train_labels = np.array(list(df[target_column].astype(np.uint8)))
+    train_set = df.drop(columns = [target_column])
+    pipeline = Pipeline([('imputer', Imputer(strategy = 'median')), 
+                          ('scaler', MinMaxScaler())])
+    train_set = pipeline.fit_transform(train_set)
+    clf = RandomForestClassifier(n_estimators=100, random_state=10, n_jobs = -1)
+    clf.fit(train_set, train_labels)
+    return pipeline, clf
 
-def get_predictions(clf_features, df):
-    [(clf_2, k_features_2), (clf_3, k_features_3), (clf_4, k_features_4)] = clf_features
-    preds_2 = run_preds(clf_2, k_features_2, df)
-    preds_3 = run_preds(clf_3, k_features_3, df)
-    preds_4 = run_preds(clf_4, k_features_4, df)
-    
-    results_4 = pd.DataFrame(preds_4, columns=[person_id,'clf_4']).set_index(person_id)
-    results_3 = pd.DataFrame(preds_3, columns=[person_id,'clf_3']).set_index(person_id)
-    results_2 = pd.DataFrame(preds_2, columns=[person_id,'clf_2']).set_index(person_id)
-    
-    results = pd.concat([results_2, results_3, results_4], axis=1, sort=False).fillna(0).astype(int)
-    
-    results['clf_1'] = (~results[['clf_2','clf_3','clf_4']].any(axis=1)).astype(int)
-    return results
+def load_test_data(filepath='../input/test.csv', idx='Id'):
+    test_df = load_from_file(filepath, idx)
+    test_df = clean_data(test_df)
+    test_df = test_df.reset_index()[hh_columns+[household_id]]
+    test_df = test_df.groupby(household_id).agg(lambda x: scipy.stats.mode(x)[0])
+    test_df = compress_column_data(test_df)
+    test_df = add_custom_features(test_df)
+    return test_df
 
-def get_clean_data(filepath='data/train.csv'):
-    train_df = get_training_data(filepath)
-    train_df = clean_data(train_df)
-    train_df = train_df.reset_index()[hh_columns+['idhogar', 'Target']]
-    target_household_map = target_by_household(train_df)
-    train_df = train_df.drop(target_column, axis=1).groupby(household_id).mean()
-    train_df = train_df.join(target_household_map)
-    train_df = compress_column_data(train_df)
-    train_df = add_custom_features(train_df)
-    return train_df
 
-# train_df = get_clean_data()
+def test_clf(pipeline, clf, test_set):
+    test_set = pipeline.transform(test_set)
+    return clf.predict_proba(test_set)
 
-# clfs = {4:KNeighborsClassifier(n_neighbors=1), 
-#         3:KNeighborsClassifier(n_neighbors=1), 
-#         2:KNeighborsClassifier(n_neighbors=2)}
 
-# t_clfs_features = train_all_clf(train_df, clfs)
 
-# test = get_test_data('data/test.csv')
-# test = clean_data(test)
-# test = test.reset_index()[hh_columns] 
-# test = compress_column_data(test)
-# test = add_custom_features(test).set_index(person_id)
 
-# results = get_predictions(t_clfs_features, test)
-# targets = compress_columns(results, target_column, ['clf_1','clf_2','clf_3','clf_4'])+1
-# targets.to_csv('knns.csv')
+t = load_train_data().drop(person_id, axis=1)
+
+is_1 = get_balanced_data(convert_to_binary_targets(t, 1))
+is_2 = get_balanced_data(convert_to_binary_targets(t, 2))
+is_3 = get_balanced_data(convert_to_binary_targets(t, 3))
+is_4 = get_balanced_data(convert_to_binary_targets(t, 4))
+
+p_1, c_1 = train_clf(is_1)
+p_2, c_2 = train_clf(is_2)
+p_3, c_3 = train_clf(is_3)
+p_4, c_4 = train_clf(is_4)
+
+v = load_test_data().drop(person_id, axis=1)
+
+pred_1 = pd.DataFrame(test_clf(p_1, c_1, v)).set_index(v.reset_index()[household_id]).rename(columns={0:'0',1:'1'})
+pred_2 = pd.DataFrame(test_clf(p_2, c_2, v)).set_index(v.reset_index()[household_id]).rename(columns={0:'0',1:'2'})
+pred_3 = pd.DataFrame(test_clf(p_3, c_3, v)).set_index(v.reset_index()[household_id]).rename(columns={0:'0',1:'3'})
+pred_4 = pd.DataFrame(test_clf(p_4, c_4, v)).set_index(v.reset_index()[household_id]).rename(columns={0:'0',1:'4'})
+
+results = pd.concat([pred_1['1'], pred_2['2'], pred_3['3'], pred_4['4']], axis=1)
+preds = results.idxmax(axis=1).to_frame().rename(columns = {0:target_column})
+
+test_df = load_from_file('../input/test.csv', person_id)
+csv = test_df[[household_id]].join(preds, on=household_id)[[target_column]]
+csv.to_csv('results.csv', header=True)
