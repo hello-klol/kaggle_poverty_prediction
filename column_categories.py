@@ -127,11 +127,11 @@ column_descriptions = {
     'mobilephone':'=1 if mobile phone',
     'qmobilephone':'# of mobile phones',
     
-    'hacdor':'=1 Overcrowding by bedrooms',
     'rooms':' number of all rooms in the house',
     'hacapo':'=1 Overcrowding by rooms',
     'bedrooms':'number of bedrooms',
-    'overcrowding':'# persons per room',
+    'hacdor':'=1 Overcrowding by bedrooms',
+    'overcrowding':'# persons per bedroom',
     'SQBovercrowding':'overcrowding squared',
     
     'age':'Age in years',    
